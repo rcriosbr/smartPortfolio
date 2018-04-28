@@ -77,7 +77,7 @@ public class LegalEntityController {
    */
   @GetMapping("v1/{ntpid}")
   public ResponseEntity<LegalEntity> getLegalEntity(@PathVariable("ntpid") String nationalTaxPayerId) {
-    LOGGER.debug("Getting legal entoty with ntpId '{}'", nationalTaxPayerId);
+    LOGGER.debug("Getting legal entity with ntpId '{}'", nationalTaxPayerId);
 
     final Optional<LegalEntity> result = this.repo.findByNationalTaxPayerId(nationalTaxPayerId);
 

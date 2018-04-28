@@ -19,12 +19,16 @@ import javax.persistence.Temporal;
 import javax.persistence.TemporalType;
 import javax.persistence.Transient;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 @Entity
 public class Portfolio implements Serializable {
+  private static final Logger LOGGER = LoggerFactory.getLogger(Portfolio.class);
 
   private static final long serialVersionUID = 1L;
 
@@ -39,40 +43,72 @@ public class Portfolio implements Serializable {
   private Portfolio master;
 
   @OneToMany(fetch = FetchType.EAGER)
-  private List<MutualFund> mutualFunds;
+  private List<MutualFund> mutualFund = new ArrayList<>();
 
+  @JsonFormat(pattern = "EEE MMM dd HH:mm:ss z yyyy", locale = "US")
   @Temporal(TemporalType.DATE)
-  private Date quoteValueDate;
+  @Column(nullable = false)
+  private Date shareValueDate;
 
   @Column(precision = 16, scale = 6, nullable = false)
-  private BigDecimal quotes;
+  private BigDecimal shares;
 
   @Column(precision = 16, scale = 6, nullable = false)
-  private @NonNull BigDecimal quoteValue;
+  private @NonNull BigDecimal shareValue;
 
   @Column(precision = 16, scale = 6, nullable = false)
   private BigDecimal value;
 
   @Column(precision = 16, scale = 6, nullable = false)
-  private BigDecimal quoteValueBenchmark;
+  private BigDecimal benchmarkValue;
 
   @JsonInclude()
   @Transient
   private PortfolioFacts facts;
 
+  /**
+   * Verifies if the provided object is valid. If it is not, throws an SmartPortfolioRuntimeException. To be valid, ...
+   *
+   * @param toBeValidated
+   *          Object to be validated
+   */
+  public static void validate(Portfolio toBeValidated) {
+    if (toBeValidated == null) {
+      throw new InvalidObject("Portfolio object cannot be null.");
+    }
+
+    if ((toBeValidated.getName() == null) || toBeValidated.getName().trim().isEmpty()) {
+      throw new InvalidObject("Portfolio name cannot be null or empty.");
+    }
+
+    // TODO Implementar validações faltantes
+  }
+
+  /**
+   * Helper method that verifies if this object is valid.
+   *
+   * @return True if the object is valid. False otherwise. The underlying exception will be logged as a warning.
+   */
+  public boolean isValid() {
+    try {
+      Portfolio.validate(this);
+    } catch (final InvalidObject e) {
+      LOGGER.warn("Object is invalid. Current object state: " + this.toString(), e);
+      return false;
+    }
+    return true;
+  }
+
   public boolean add(MutualFund mf) {
     if (mf.isValid()) {
-      if (this.mutualFunds == null) {
-        this.mutualFunds = new ArrayList<>();
-      }
-      this.mutualFunds.add(mf);
+      this.mutualFund.add(mf);
       return true;
     }
     return false;
   }
 
   public Long getId() {
-    return id;
+    return this.id;
   }
 
   public void setId(Long id) {
@@ -80,7 +116,7 @@ public class Portfolio implements Serializable {
   }
 
   public String getName() {
-    return name;
+    return this.name;
   }
 
   public void setName(String name) {
@@ -88,70 +124,70 @@ public class Portfolio implements Serializable {
   }
 
   public Portfolio getMaster() {
-    return master;
+    return this.master;
   }
 
   public void setMaster(Portfolio master) {
     this.master = master;
   }
 
-  public List<MutualFund> getMutualFunds() {
-    return Collections.unmodifiableList(this.mutualFunds);
+  public List<MutualFund> getMutualFund() {
+    return Collections.unmodifiableList(this.mutualFund);
   }
 
-  public void setMutualFunds(List<MutualFund> mutualFunds) {
-    this.mutualFunds = mutualFunds;
+  public void setMutualFund(List<MutualFund> mutualFund) {
+    this.mutualFund = mutualFund;
   }
 
-  public Date getQuoteValueDate() {
-    if (quoteValueDate != null) {
-      return new Date(quoteValueDate.getTime());
+  public Date getShareValueDate() {
+    if (this.shareValueDate != null) {
+      return new Date(this.shareValueDate.getTime());
     }
     return null;
   }
 
-  public void setQuoteValueDate(Date quoteValueDate) {
-    if (quoteValueDate != null) {
-      this.quoteValueDate = new Date(quoteValueDate.getTime());
+  public void setShareValueDate(Date shareValueDate) {
+    if (shareValueDate != null) {
+      this.shareValueDate = new Date(shareValueDate.getTime());
     } else {
-      this.quoteValueDate = null;
+      this.shareValueDate = null;
     }
   }
 
-  public BigDecimal getQuotes() {
-    return quotes;
+  public BigDecimal getShares() {
+    return this.shares;
   }
 
-  public void setQuotes(BigDecimal quotes) {
-    this.quotes = quotes;
+  public void setShares(BigDecimal shares) {
+    this.shares = shares;
   }
 
-  public BigDecimal getQuoteValue() {
-    return quoteValue;
+  public BigDecimal getShareValue() {
+    return this.shareValue;
   }
 
-  public void setQuoteValue(BigDecimal quoteValue) {
-    this.quoteValue = quoteValue;
+  public void setShareValue(BigDecimal shareValue) {
+    this.shareValue = shareValue;
   }
 
   public BigDecimal getValue() {
-    return value;
+    return this.value;
   }
 
   public void setValue(BigDecimal value) {
     this.value = value;
   }
 
-  public BigDecimal getQuoteValueBenchmark() {
-    return quoteValueBenchmark;
+  public BigDecimal getBenchmarkValue() {
+    return this.benchmarkValue;
   }
 
-  public void setQuoteValueBenchmark(BigDecimal quoteValueBenchmark) {
-    this.quoteValueBenchmark = quoteValueBenchmark;
+  public void setBenchmarkValue(BigDecimal benchmarkValue) {
+    this.benchmarkValue = benchmarkValue;
   }
 
   public PortfolioFacts getFacts() {
-    return facts;
+    return this.facts;
   }
 
   public void setFacts(PortfolioFacts facts) {
@@ -160,7 +196,9 @@ public class Portfolio implements Serializable {
 
   @Override
   public String toString() {
-    return String.format("Portfolio [id=%s, name=%s, master.id=%s, mutualfunds=%s, quoteValueDate=%s, quotes=%s, quoteValue=%s, value=%s, quoteValueBenchmark=%s]", id, name,
-        master != null ? master.getId() : null, mutualFunds, quoteValueDate, quotes, quoteValue, value, quoteValueBenchmark);
+    return String.format(
+        "Portfolio [id=%s, name=%s, master.id=%s, mutualfunds=%s, quoteValueDate=%s, quotes=%s, quoteValue=%s, value=%s, quoteValueBenchmark=%s]", this.id,
+        this.name, this.master != null ? this.master.getId() : null, this.mutualFund, this.shareValueDate, this.shares, this.shareValue, this.value,
+        this.benchmarkValue);
   }
 }
