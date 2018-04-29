@@ -1,6 +1,7 @@
 package br.com.rcrios.smartportfolio.controller;
 
 import java.math.BigDecimal;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,6 +30,9 @@ import br.com.rcrios.smartportfolio.model.Portfolio;
 import br.com.rcrios.smartportfolio.repository.PortfolioRepository;
 import br.com.rcrios.smartportfolio.repository.PreconditionFailed;
 
+/**
+ * All responses are wrapped into a {@link ResponseEntity}.
+ */
 @CrossOrigin
 @RestController
 @RequestMapping(value = "/api/portfolios")
@@ -40,14 +44,16 @@ public class PortfolioController {
 
   /**
    * If a portfolio is being created (through a POST request), the action will only impact its share quantity, not its
-   * share value.
-   *
-   * If portfolio being saved has masters attached to it, they will also be updated.
+   * share value. If portfolio being saved has masters attached to it, they will also be updated.
    *
    * @see #updateMaster(Portfolio)
    *
    * @param portfolio
-   * @return
+   *
+   * @return If everything works, will return a ResponseEntity with {@link HttpStatus#OK} and a Portfolio in its body.
+   *         Otherwise will return a {@link org.springframework.web.bind.annotation.ResponseStatus} with code
+   *         {@link HttpStatus#UNPROCESSABLE_ENTITY} if the posted object isn't valid, or
+   *         {@link HttpStatus#INTERNAL_SERVER_ERROR} if a DataAccessException occurs.
    */
   @PostMapping("v1/")
   public ResponseEntity<Portfolio> save(@RequestBody Portfolio portfolio) {
@@ -63,6 +69,11 @@ public class PortfolioController {
 
     Portfolio saved = null;
     try {
+
+      if (portfolio.getLastUpdated() == null) {
+        portfolio.setLastUpdated(new Date());
+      }
+
       saved = this.repo.save(portfolio);
       LOGGER.trace("Saved {}", saved);
     } catch (final DataAccessException e) {
@@ -83,10 +94,8 @@ public class PortfolioController {
   /**
    * Retrieves ALL portfolios from repository.
    *
-   * @see https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/http/ResponseEntity.html
-   *
-   * @return A list of portfolios wrapped by a {@link ResponseEntity}. If the list is empty, ResponseEntity will have a
-   *         {@literal HttpStatus#NO_CONTENT}.
+   * @return A list of portfolios wrapped by a {@link ResponseEntity} with {@literal HttpStatus#OK}. If the list is empty,
+   *         ResponseEntity will have a {@literal HttpStatus#NO_CONTENT}.
    */
   @GetMapping("v1/")
   public ResponseEntity<List<Portfolio>> getAll() {
@@ -98,6 +107,15 @@ public class PortfolioController {
     }
   }
 
+  /**
+   * Retrieves a single portfolio.
+   *
+   * @param id
+   *          Internal portfolio identification.
+   *
+   * @return A portfolio wrapped by a {@link ResponseEntity} with {@literal HttpStatus#OK}. If ID doesn't exist,
+   *         ResponseEntity will have a {@literal HttpStatus#NOT_FOUND}.
+   */
   @GetMapping("v1/{id}")
   public ResponseEntity<Portfolio> getById(@PathVariable("id") Long id) {
     LOGGER.debug("Getting portfolio with id '{}'", id);
@@ -112,15 +130,14 @@ public class PortfolioController {
   }
 
   /**
-   * Search and return a Portfolio by its name.
+   * Retrieves a single portfolio.
    *
    * @param name
-   *          String that will be used to locate the Portfolio. case INsensitive.
+   *          String that will be used to locate the Portfolio. Case INsensitive. Perfect match.
    *
    * @see PortfolioRepository#findFirstByNameIgnoreCase(String)
-   * @see https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/http/ResponseEntity.html
    *
-   * @return A Portfolio wrapped by a {@link ResponseEntity}. If not found, ResponseEntity will have a
+   * @return A portfolio wrapped by a {@link ResponseEntity}. If not found, ResponseEntity will have a
    *         {@literal HttpStatus#NOT_FOUND}.
    */
   @GetMapping("v1")
@@ -136,6 +153,14 @@ public class PortfolioController {
     return new ResponseEntity<>(new Portfolio(), HttpStatus.NOT_FOUND);
   }
 
+  /**
+   * Retrieves the root portfolio. Root portfolio is the main portfolio, to which other portfolios are attached. It's the
+   * only one that has a null master.
+   *
+   * @return A portfolio wrapped by a {@link ResponseEntity}. Otherwise will return a
+   *         {@link org.springframework.web.bind.annotation.ResponseStatus} with code
+   *         {@link HttpStatus#PRECONDITION_FAILED}
+   */
   @GetMapping("v1/root")
   public ResponseEntity<Portfolio> getRootValue() {
     final Optional<Portfolio> result = this.repo.getRootPortfolio();
@@ -147,6 +172,20 @@ public class PortfolioController {
     throw new PreconditionFailed("SmartPortfolio isn't properly configured. It doesn't have a root portfolio.");
   }
 
+  /**
+   * Attach a mutual fund to a portfolio. When attaching, portfolio shares will be updated. If portfolio being modified
+   * has masters attached to it, they will also be updated. Changes will only be applied to quantity. Share value will not
+   * be changed.
+   *
+   * @see #updateMaster(Portfolio, MutualFund)
+   *
+   * @param portfolio
+   *
+   * @return If everything works, will return a ResponseEntity with {@link HttpStatus#OK} and a Portfolio in its body.
+   *         Otherwise will return a {@link org.springframework.web.bind.annotation.ResponseStatus} with code
+   *         {@link HttpStatus#INTERNAL_SERVER_ERROR} if the portfolio doesn't exist or if the system wasn't able to
+   *         attach the mutual fund.
+   */
   @PatchMapping("v1/{id}")
   public ResponseEntity<Portfolio> attach(@PathVariable Long id, @RequestBody MutualFund mf) {
     final Optional<Portfolio> p = this.repo.findById(id);
@@ -198,6 +237,12 @@ public class PortfolioController {
     }
   }
 
+  /**
+   * Update a master portfolio based on values from its children. Master shares will be increased by child portfolio value
+   * divided by master share value. Will recursively update all masters.
+   *
+   * @param portfolio
+   */
   private void updateMaster(Portfolio portfolio) {
     Portfolio master = portfolio.getMaster();
 
