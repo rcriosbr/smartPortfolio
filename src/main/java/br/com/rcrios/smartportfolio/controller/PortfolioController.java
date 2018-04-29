@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import br.com.rcrios.smartportfolio.SmartPortfolioRuntimeException;
@@ -37,6 +38,17 @@ public class PortfolioController {
   @Autowired
   private PortfolioRepository repo;
 
+  /**
+   * If a portfolio is being created (through a POST request), the action will only impact its share quantity, not its
+   * share value.
+   *
+   * If portfolio being saved has masters attached to it, they will also be updated.
+   *
+   * @see #updateMaster(Portfolio)
+   *
+   * @param portfolio
+   * @return
+   */
   @PostMapping("v1/")
   public ResponseEntity<Portfolio> save(@RequestBody Portfolio portfolio) {
     LOGGER.debug("Saving {}", portfolio);
@@ -52,11 +64,18 @@ public class PortfolioController {
     Portfolio saved = null;
     try {
       saved = this.repo.save(portfolio);
+      LOGGER.trace("Saved {}", saved);
     } catch (final DataAccessException e) {
       final String msg = "Failed to save portfolio. Full stacktrace was logged with id " + System.currentTimeMillis();
       LOGGER.warn(msg, e);
       throw new SmartPortfolioRuntimeException(msg, e);
     }
+
+    if (saved == null) {
+      throw new SmartPortfolioRuntimeException("Something went wrong saving " + portfolio);
+    }
+
+    this.updateMaster(portfolio);
 
     return new ResponseEntity<>(saved, HttpStatus.CREATED);
   }
@@ -79,6 +98,19 @@ public class PortfolioController {
     }
   }
 
+  @GetMapping("v1/{id}")
+  public ResponseEntity<Portfolio> getById(@PathVariable("id") Long id) {
+    LOGGER.debug("Getting portfolio with id '{}'", id);
+
+    final Optional<Portfolio> result = this.repo.findById(id);
+
+    if (result.isPresent()) {
+      return new ResponseEntity<>(result.get(), HttpStatus.OK);
+    }
+
+    return new ResponseEntity<>(new Portfolio(), HttpStatus.NOT_FOUND);
+  }
+
   /**
    * Search and return a Portfolio by its name.
    *
@@ -91,8 +123,8 @@ public class PortfolioController {
    * @return A Portfolio wrapped by a {@link ResponseEntity}. If not found, ResponseEntity will have a
    *         {@literal HttpStatus#NOT_FOUND}.
    */
-  @GetMapping("v1/{name}")
-  public ResponseEntity<Portfolio> getByName(@PathVariable("name") String name) {
+  @GetMapping("v1")
+  public ResponseEntity<Portfolio> getByName(@RequestParam("name") String name) {
     LOGGER.debug("Getting portfolio with name '{}'", name);
 
     final Optional<Portfolio> result = this.repo.findFirstByNameIgnoreCase(name);
@@ -144,17 +176,43 @@ public class PortfolioController {
     return new ResponseEntity<>(saved, HttpStatus.OK);
   }
 
+  /**
+   * Update a master portfolio from portfolio based on values from a mutual fund. Portfolio shares will be increased by
+   * mutual fund value divided by portfolio share value. Will recursively update all masters.
+   *
+   * @param portfolio
+   * @param mf
+   */
   private void updateMaster(Portfolio portfolio, MutualFund mf) {
     Portfolio master = portfolio.getMaster();
     while (master != null) {
       LOGGER.debug("Updating master '{}'", master);
 
       final BigDecimal shares = mf.getValue().divide(master.getShareValue(), Utils.DEFAULT_MATHCONTEXT);
-      portfolio.setShares(master.getShares().add(shares, Utils.DEFAULT_MATHCONTEXT));
-      portfolio.setValue(master.getShares().multiply(master.getShareValue(), Utils.DEFAULT_MATHCONTEXT));
+      master.setShares(master.getShares().add(shares, Utils.DEFAULT_MATHCONTEXT));
+      master.setValue(master.getShares().multiply(master.getShareValue(), Utils.DEFAULT_MATHCONTEXT));
+      master.setLastUpdated(portfolio.getLastUpdated());
 
       master = this.repo.save(master).getMaster();
-      LOGGER.trace("Post save: '{}'", master);
+      LOGGER.trace("Post master update: '{}'", master);
+    }
+  }
+
+  private void updateMaster(Portfolio portfolio) {
+    Portfolio master = portfolio.getMaster();
+
+    LOGGER.debug("Portfolio '{}' has a master: {}", portfolio.getName(), portfolio.getMasterAsString());
+
+    while (master != null) {
+      LOGGER.debug("Updating master portfolio '{}'", master);
+
+      final BigDecimal shares = portfolio.getValue().divide(master.getShareValue(), Utils.DEFAULT_MATHCONTEXT);
+      master.setShares(master.getShares().add(shares, Utils.DEFAULT_MATHCONTEXT));
+      master.setValue(master.getShares().multiply(master.getShareValue(), Utils.DEFAULT_MATHCONTEXT));
+      master.setLastUpdated(portfolio.getLastUpdated());
+
+      master = this.repo.save(master).getMaster();
+      LOGGER.trace("Post master portfolio update: '{}'", master);
     }
   }
 }

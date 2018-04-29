@@ -62,6 +62,11 @@ public class Portfolio implements Serializable {
   @Column(precision = 16, scale = 6, nullable = false)
   private BigDecimal benchmarkValue;
 
+  @JsonFormat(pattern = "EEE MMM dd HH:mm:ss z yyyy", locale = "US")
+  @Temporal(TemporalType.DATE)
+  @Column(nullable = false)
+  private Date lastUpdated;
+
   @JsonInclude()
   @Transient
   private PortfolioFacts facts;
@@ -131,6 +136,18 @@ public class Portfolio implements Serializable {
     this.master = master;
   }
 
+  /**
+   * Helper method to debug
+   *
+   * @return
+   */
+  public String getMasterAsString() {
+    if (this.master != null) {
+      return String.format("master.id=%s; master.name=%s", this.master.getId(), this.master.getName());
+    }
+    return "null";
+  }
+
   public List<MutualFund> getMutualFund() {
     return Collections.unmodifiableList(this.mutualFund);
   }
@@ -186,6 +203,21 @@ public class Portfolio implements Serializable {
     this.benchmarkValue = benchmarkValue;
   }
 
+  public Date getLastUpdated() {
+    if (this.lastUpdated != null) {
+      return new Date(this.lastUpdated.getTime());
+    }
+    return null;
+  }
+
+  public void setLastUpdated(Date lastUpdated) {
+    if (lastUpdated != null) {
+      this.lastUpdated = new Date(lastUpdated.getTime());
+    } else {
+      this.lastUpdated = null;
+    }
+  }
+
   public PortfolioFacts getFacts() {
     return this.facts;
   }
@@ -196,9 +228,8 @@ public class Portfolio implements Serializable {
 
   @Override
   public String toString() {
-    return String.format(
-        "Portfolio [id=%s, name=%s, master.id=%s, mutualfunds=%s, quoteValueDate=%s, quotes=%s, quoteValue=%s, value=%s, quoteValueBenchmark=%s]", this.id,
-        this.name, this.master != null ? this.master.getId() : null, this.mutualFund, this.shareValueDate, this.shares, this.shareValue, this.value,
+    return String.format("Portfolio [id=%s, name=%s, master.id=%s, mutualfunds=%s, shareValueDate=%s, shares=%s, shareValue=%s, value=%s, benchmarkValue=%s]",
+        this.id, this.name, this.master != null ? this.master.getId() : null, this.mutualFund, this.shareValueDate, this.shares, this.shareValue, this.value,
         this.benchmarkValue);
   }
 }
